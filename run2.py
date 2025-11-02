@@ -1,62 +1,97 @@
 import sys
-from collections import defaultdict, deque
+from collections import deque, defaultdict
+
 
 def solve(edges: list[tuple[str, str]]) -> list[str]:
-    """
-    Решение задачи об изоляции вируса.
-    
-    Args:
-        edges: список коридоров в формате (узел1, узел2)
-
-    Returns:
-        список отключаемых коридоров в формате "Шлюз-узел"
-    """
-    # Строим граф
-    g = defaultdict(set)
+    graph = defaultdict(set)
     for u, v in edges:
-        g[u].add(v)
-        g[v].add(u)
+        graph[u].add(v)
+        graph[v].add(u)
 
-    # Шлюзы
-    gateways = {x for x in g if x.isupper()}
-    virus = 'a'
+    gateways = sorted([n for n in graph if n.isupper()])
+    virus_pos = "a"
     result = []
 
-    while True:
-        # BFS: расстояния от текущей позиции вируса до всех узлов
-        dist = {virus: 0}
-        q = deque([virus])
+    def bfs(start):
+        dist = {start: 0}
+        prev = {start: None}
+        q = deque([start])
         while q:
-            node = q.popleft()
-            for nei in g[node]:
+            cur = q.popleft()
+            for nei in sorted(graph[cur]):
                 if nei not in dist:
-                    dist[nei] = dist[node] + 1
+                    dist[nei] = dist[cur] + 1
+                    prev[nei] = cur
                     q.append(nei)
+        return dist, prev
 
-        # Выбираем ближайший шлюз
+    while True:
+        dist, prev = bfs(virus_pos)
         reachable = [(dist[g], g) for g in gateways if g in dist]
         if not reachable:
             break
-        _, gate = min(reachable)
 
-        # Выбираем коридор шлюз-узел для отключения
-        disconnect = min(n for n in g[gate] if n.islower())
-        result.append(f"{gate}-{disconnect}")
+        reachable.sort()
+        min_d = reachable[0][0]
+        candidate_gateways = [g for d, g in reachable if d == min_d]
+        target_gateway = min(candidate_gateways)
 
-        # Удаляем коридор из графа
-        g[gate].remove(disconnect)
-        g[disconnect].remove(gate)
+        # если вирус соседствует со шлюзом — отрубаем
+        for g in gateways:
+            if g in graph[virus_pos]:
+                result.append(f"{g}-{virus_pos}")
+                graph[g].discard(virus_pos)
+                graph[virus_pos].discard(g)
+                break
+        else:
+            # выбираем первый возможный разрыв шлюз-узел
+            candidates = []
+            for g in gateways:
+                for n in sorted(graph[g]):
+                    if n.islower():
+                        candidates.append((g, n))
+            candidates.sort()
 
-        # Перемещаем вирус на один шаг к выбранному шлюзу
-        next_steps = sorted(n for n in g[virus] if dist[n] < dist[gate])
-        if next_steps:
-            virus = next_steps[0]
+            for g, n in candidates:
+                graph[g].discard(n)
+                graph[n].discard(g)
+                new_dist, _ = bfs(virus_pos)
+                if not any(gw in new_dist and new_dist[gw] == 1 for gw in gateways):
+                    result.append(f"{g}-{n}")
+                    break
+                else:
+                    graph[g].add(n)
+                    graph[n].add(g)
+
+        # обновляем позицию вируса
+        dist, prev = bfs(virus_pos)
+        reachable = [(dist[g], g) for g in gateways if g in dist]
+        if reachable:
+            reachable.sort()
+            _, tg = reachable[0]
+            path = []
+            cur = tg
+            while cur != virus_pos:
+                path.append(cur)
+                cur = prev[cur]
+            path.reverse()
+            virus_pos = path[0] if path else virus_pos
+        else:
+            break
 
     return result
 
+
 def main():
-    edges = [tuple(line.strip().split('-')) for line in sys.stdin if line.strip()]
-    print(*solve(edges), sep='\n')
+    edges = []
+    for line in sys.stdin:
+        line = line.strip()
+        if line:
+            a, _, b = line.partition('-')
+            edges.append((a, b))
+    for edge in solve(edges):
+        print(edge)
+
 
 if __name__ == "__main__":
     main()
